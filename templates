@@ -1,0 +1,283 @@
+#### DOWNLOAD.HTML
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Video Processing Status</title>
+    <style>
+        .video-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin-top: 20px;
+        }
+        .video-controls {
+            text-align: center;
+            margin-top: 20px;
+        }
+        .back-button {
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Video Processing Status</h1>
+    {% if message %}
+    <p>{{ message|safe }}</p>
+    {% endif %}
+    {% if video_filename %}
+    <form action="/convert" method="post">
+        <input type="hidden" name="video_filename" value="{{ video_filename }}">
+        <input type="hidden" name="last_step" value="upload">
+        <input type="submit" value="Extract Frames">
+    </form>
+    {% endif %}
+    {% if frames_extracted and frames %}
+    <form action="/remove_duplicates" method="post">
+        <input type="hidden" name="video_filename" value="{{ video_filename }}">
+        <input type="hidden" name="last_step" value="convert">
+        <input type="submit" value="Remove Duplicates">
+    </form>
+    {% endif %}
+    {% if duplicates_removed and frames %}
+    <form action="/stitch" method="post">
+        <input type="hidden" name="last_step" value="remove_duplicates">
+        <input type="submit" value="Stitch Frames">
+    </form>
+    {% endif %}
+    {% if stitched and output_video_path %}
+    <form action="/upload" method="post">
+        <input type="hidden" name="output_video_path" value="{{ output_video_path }}">
+        <input type="hidden" name="last_step" value="stitch">
+        <input type="submit" value="Upload to Azure Blob">
+    </form>
+    {% endif %}
+    {% if blob_url %}
+    <div class="video-container">
+        <video id="uploadedVideo" controls>
+            <source src="{{ blob_url }}" type="video/mp4">
+            Your browser does not support the video tag.
+        </video>
+    </div>
+       <form action="/frames">
+        <input type="submit" value="View Frames">
+    </form>
+    <br>
+    {% endif %}
+    {% if last_step %}
+    <form action="/{{ last_step }}" method="post" class="back-button">
+        <input type="submit" value="Back">
+    </form>
+    {% if last_step == 'stitch' %}
+    <form action="{{ url_for('play_video', video_name=output_video_path) }}" method="get">
+        <input type="submit" value="Play Video">
+    </form>
+    {% endif %}
+    {% endif %}
+    <form action="/">
+        <input type="submit" value="Back to Home">
+    </form>
+    
+    <script>
+        var frames = {{ frames | safe }};
+        var currentFrameIndex = 0;
+        var video = document.getElementById('uploadedVideo');
+
+        function previousFrame() {
+            if (currentFrameIndex > 0) {
+                currentFrameIndex--;
+                video.src = frames[currentFrameIndex];
+            }
+        }
+
+        function nextFrame() {
+            if (currentFrameIndex < frames.length - 1) {
+                currentFrameIndex++;
+                video.src = frames[currentFrameIndex];
+            }
+        }
+    </script>
+</body>
+</html>
+
+#### FRAMES.HTML
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Carousel</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            font-family: Arial, sans-serif;
+        }
+        .carousel-container {
+            position: relative;
+            max-width: 600px;
+            margin: auto;
+            overflow: hidden;
+            text-align: center;
+        }
+        .carousel-slide {
+            display: none;
+            width: 100%;
+        }
+        .carousel-slide img {
+            max-width: 100%;  /* Ensure image does not overflow the container */
+            max-height: 400px; /* Set maximum height for images */
+            width: auto;
+            height: auto;
+            display: block;
+            margin: auto;
+        }
+        .prev, .next {
+            cursor: pointer;
+            display: inline-block;
+            padding: 16px;
+            margin: 10px;
+            color: white;
+            font-weight: bold;
+            font-size: 18px;
+            transition: 0.6s ease;
+            user-select: none;
+            background-color: rgba(0, 0, 0, 0.5);
+            border-radius: 3px;
+        }
+        .prev:hover, .next:hover {
+            background-color: rgba(0, 0, 0, 0.8);
+        }
+    </style>
+</head>
+<body>
+ 
+<div class="carousel-container" id="carousel-container">
+    <!-- Slides will be dynamically added here -->
+</div>
+ 
+<div class="carousel-controls">
+    <center>
+        <a class="prev" onclick="changeSlide(-1)">&#10094; Prev</a>
+        <a class="next" onclick="changeSlide(1)">Next &#10095;</a>
+    </center>
+</div>
+ 
+<script>
+    let slideIndex = 0;
+    let slides = [];
+ 
+    document.addEventListener('DOMContentLoaded', async () => {
+        const response = await fetch('/images');
+        slides = await response.json();
+        showSlides(slideIndex);
+    });
+ 
+    function changeSlide(n) {
+        showSlides(slideIndex += n);
+    }
+ 
+    function showSlides(n) {
+        let i;
+        const container = document.getElementById('carousel-container');
+        container.innerHTML = '';
+        if (n >= slides.length) { slideIndex = 0 }
+        if (n < 0) { slideIndex = slides.length - 1 }
+        for (i = 0; i < slides.length; i++) {
+            const div = document.createElement('div');
+            div.classList.add('carousel-slide');
+            if (i === slideIndex) {
+                div.style.display = 'block';
+            }
+            const img = document.createElement('img');
+            img.src = `/static/frames/${slides[i]}`;
+            div.appendChild(img);
+            container.appendChild(div);
+        }
+    }
+</script>
+ 
+</body>
+</html>
+
+###INDEX.HTML
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Video Processing</title>
+</head>
+<body>
+    <h1>Download YouTube Video</h1>
+    <form action="/download" method="post">
+        <label for="url">YouTube URL:</label><br>
+        <input type="text" id="url" name="url"><br><br>
+        <input type="submit" value="Download">
+    </form>
+</body>
+</html>
+
+#### PLAY_VIDEO.HTML
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Play Video</title>
+</head>
+<body>
+    <h1>Video Player</h1>
+    <div>
+        <video width="640" height="480" controls>
+            <source src="{{ url_for('play_video', filename='output_videos/stitched_video.mp4') }}" type="video/mp4">
+            Your browser does not support the video tag.
+        </video>
+    </div>
+</body>
+</html>
+
+#### VIDEO_PLAY.HTML
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Video Player</title>
+    <style>
+        .video-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="video-container">
+        <h2>Stitched Video</h2>
+        <video id="videoPlayer" width="640" height="360" controls>
+            <source src="{{ video_path }}" type="video/webm">
+            Your browser does not support the video tag.
+        </video>
+        <br>
+        <button onclick="playVideo()">Play</button>
+        <button onclick="pauseVideo()">Pause</button>
+    </div>
+    <script>
+        var video = document.getElementById("videoPlayer");
+        console.log("Video path:", "{{ video_path }}");  // Debugging line
+
+        function playVideo() {
+            video.play();
+        }
+
+        function pauseVideo() {
+            video.pause();
+        }
+    </script>
+</body>
+</html>
+
